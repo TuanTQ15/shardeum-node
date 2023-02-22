@@ -1,38 +1,20 @@
 #!/usr/bin/env bash
 
-# docker-compose-safe() {
-#   if command -v docker-compose &>/dev/null; then
-#     cmd="docker-compose"
-#   elif docker --help | grep -q "compose"; then
-#     cmd="docker compose"
-#   else
-#     echo "docker-compose or docker compose is not installed on this machine"
-#     exit 1
-#   fi
+read -p "Enter the path to the file containing the private keys for the shardeum nodes (default is wallets.txt): " PRIV_KEYS_FILE
+PRIV_KEYS_FILE=${PRIV_KEYS_FILE:-"wallets.txt"}
 
-#   if ! $cmd $@; then
-#     echo "Trying again with sudo..."
-#     sudo $cmd $@
-#   fi
-# }
-# # docker-compose-safe -f docker-compose.yml up -d --scale "shardeum-dashboard=${SHARDEUM_INSTANCE}"
-read -p "How many instance you want (max 100): " SHARDEUM_INSTANCE
-
+SHARDEUM_INSTANCE=$(wc -l < "$PRIV_KEYS_FILE")
 
 SHMEXT=9001
 SHMINT=10001
 SERVERIP=$(curl https://ipinfo.io/ip)
-for index in $(seq 0 $((SHARDEUM_INSTANCE-1))); do
-  echo "$((DASHPORT + index))"
-  echo "$((SHMEXT + index))"
-  echo "$((SHMINT + index))"
-  docker run -d --rm --name shardeum-node-$index -e SHMEXT=$((SHMEXT + index))  -e SHMINT=$((SHMINT + index)) \
-  -p $((SHMEXT + index)):$((SHMEXT + index)) -p $((SHMINT + index)):$((SHMINT + index)) \
-  -e APP_SEEDLIST="archiver-sphinx.shardeum.org" -e APP_MONITOR="monitor-sphinx.shardeum.org" -e APP_IP=auto \
-  -e SERVERIP=$SERVERIP test-dashboard || continue
-  echo "Start shardeum-node-$index Success"
-done
 
-# docker run -d --rm --name shardeum-node-3 -e SHMEXT=9001 -e DASHPASS=P@ssw0rd -e SHMINT=10001 -e DASHPORT=8080 \
-# -e APP_SEEDLIST="archiver-sphinx.shardeum.org" -e APP_MONITOR="monitor-sphinx.shardeum.org" -e APP_IP=auto \
-# -e SERVERIP=$(curl https://ipinfo.io/ip) test-dashboard
+while IFS= read -r line; do
+  PRIV_KEY="$(echo "$line" | tr -d '[:space:]')"
+  docker run -d --rm --name shardeum-node-$((SHARDEUM_INSTANCE-1)) -e SHMEXT=$((SHMEXT + SHARDEUM_INSTANCE - 1)) -e SHMINT=$((SHMINT + SHARDEUM_INSTANCE - 1)) \
+  -p $((SHMEXT + SHARDEUM_INSTANCE - 1)):$((SHMEXT + SHARDEUM_INSTANCE - 1)) -p $((SHMINT + SHARDEUM_INSTANCE - 1)):$((SHMINT + SHARDEUM_INSTANCE - 1)) \
+  -e APP_SEEDLIST="archiver-sphinx.shardeum.org" -e APP_MONITOR="monitor-sphinx.shardeum.org" -e APP_IP=auto \
+  -e SERVERIP=$SERVERIP test-dashboard /bin/bash -c "export PRIV_KEY=$PRIV_KEY && operator-cli set rpc_ip sphinx.shardeum.org && operator-cli set rpc_port 443 && operator-cli stake 10.1" || continue
+  echo "Started shardeum-node-$((SHARDEUM_INSTANCE-1)) successfully"
+  SHARDEUM_INSTANCE=$((SHARDEUM_INSTANCE-1))
+done < "$PRIV_KEYS_FILE"

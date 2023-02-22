@@ -3,3 +3,4 @@ cli/node_modules
 cli/build
 gui/backend/node_modules
 gui/backend/build
+**.txt
